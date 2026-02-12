@@ -77,12 +77,12 @@ const App = () => {
       };
     });
 
-    const totalPresents = stats.reduce((acc, curr) => acc + curr.presents, 0);
+    const totalAbsences = stats.reduce((acc, curr) => acc + curr.absences, 0);
     if (username && isOnline) {
       fetch(`${API_BASE_URL}/profile/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, display_name: username, total_presents: totalPresents })
+        body: JSON.stringify({ user_id: userId, display_name: username, total_absences: totalAbsences })
       });
     }
     return stats;
@@ -114,11 +114,11 @@ const App = () => {
   const saveProfile = async (name) => {
     if (!name.trim()) return;
     try {
-      const totalPresents = calculatedStats.reduce((acc, curr) => acc + curr.presents, 0);
+      const totalAbsences = calculatedStats.reduce((acc, curr) => acc + curr.absences, 0);
       await fetch(`${API_BASE_URL}/profile/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, display_name: name, total_presents: totalPresents })
+        body: JSON.stringify({ user_id: userId, display_name: name, total_absences: totalAbsences })
       });
       setUsername(name);
       setShowProfileModal(false);
@@ -290,27 +290,36 @@ const Stats = ({ stats }) => (
 
 const Ranking = ({ leaderboard, currentUserId, onRefresh }) => (
   <div className="space-y-4">
-    <div className="bg-gradient-to-br from-amber-500/20 to-orange-600/20 rounded-3xl p-6 border border-amber-500/30 text-white flex justify-between items-center">
-      <h2 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3 italic"><Trophy size={28} className="text-amber-500"/> Ranking</h2>
+    <div className="bg-gradient-to-br from-emerald-500/20 to-green-600/20 rounded-3xl p-6 border border-emerald-500/30 text-white flex justify-between items-center">
+      <div>
+        <h2 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3 italic"><Trophy size={28} className="text-emerald-500"/> Ranking</h2>
+        <p className="text-[9px] text-slate-400 mt-1 uppercase tracking-widest">Menos faltas = Melhor posicao</p>
+      </div>
       <button onClick={onRefresh} className="p-3 bg-slate-900/50 rounded-xl hover:bg-slate-800 transition-all">
         <RefreshCw size={20} className="text-slate-400" />
       </button>
     </div>
     <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden divide-y divide-slate-800/50 shadow-2xl">
-      {leaderboard.length > 0 ? leaderboard.map((u, idx) => (
-        <div key={u.user_id} className={`flex items-center justify-between p-5 transition-all ${u.user_id === currentUserId ? 'bg-blue-500/10 border-l-4 border-l-blue-500' : 'hover:bg-white/5'}`}>
-          <div className="flex items-center gap-4">
-            <span className={`w-8 text-center font-black italic text-base ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : 'text-slate-700'}`}>{idx + 1}º</span>
-            <div className="flex flex-col">
-              <span className="font-black text-sm uppercase tracking-tight">{u.display_name || "Anônimo"}</span>
-              {u.user_id === currentUserId && <span className="text-[7px] text-blue-400 font-black uppercase tracking-widest mt-1 italic">Sua Conta</span>}
+      {leaderboard.length > 0 ? leaderboard.map((u, idx) => {
+        const absences = u.total_absences || 0;
+        return (
+          <div key={u.user_id} className={`flex items-center justify-between p-5 transition-all ${u.user_id === currentUserId ? 'bg-blue-500/10 border-l-4 border-l-blue-500' : 'hover:bg-white/5'}`}>
+            <div className="flex items-center gap-4">
+              <span className={`w-8 text-center font-black italic text-base ${idx === 0 ? 'text-amber-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-700' : 'text-slate-700'}`}>{idx + 1}º</span>
+              <div className="flex flex-col">
+                <span className="font-black text-sm uppercase tracking-tight">{u.display_name || "Anonimo"}</span>
+                {u.user_id === currentUserId && <span className="text-[7px] text-blue-400 font-black uppercase tracking-widest mt-1 italic">Voce</span>}
+              </div>
+            </div>
+            <div className="text-right">
+              <span className={`text-xl font-black italic tracking-tighter ${absences === 0 ? 'text-emerald-400' : absences <= 5 ? 'text-amber-400' : 'text-rose-400'}`}>
+                {absences}
+              </span>
+              <span className="text-[8px] text-slate-500 ml-1 uppercase">faltas</span>
             </div>
           </div>
-          <div className="text-right">
-            <span className="text-xl font-black text-emerald-400 italic tracking-tighter">{u.total_presents}H</span>
-          </div>
-        </div>
-      )) : <div className="p-10 text-center text-slate-700 font-black uppercase tracking-[0.3em] text-[10px] italic">Aguardando dados...</div>}
+        );
+      }) : <div className="p-10 text-center text-slate-700 font-black uppercase tracking-[0.3em] text-[10px] italic">Aguardando dados...</div>}
     </div>
   </div>
 );

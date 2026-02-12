@@ -29,7 +29,7 @@ class Absence(BaseModel):
 class UserProfile(BaseModel):
     user_id: str
     display_name: str
-    total_presents: int
+    total_absences: int
 
 # Funcoes de manipulacao do arquivo JSON
 def load_db() -> Dict:
@@ -75,7 +75,8 @@ def delete_absence(absence_id: str):
 def get_ranking():
     db = load_db()
     users_list = list(db["users"].values())
-    return sorted(users_list, key=lambda x: x["total_presents"], reverse=True)
+    # Ordena por MENOS faltas (quem falta menos fica em primeiro)
+    return sorted(users_list, key=lambda x: x.get("total_absences", 0))
 
 @app.post("/profile/")
 def update_profile(profile: UserProfile):
