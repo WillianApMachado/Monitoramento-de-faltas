@@ -1,12 +1,12 @@
-import json
 import os
 from typing import List, Dict
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
 
 # Inicializa o servidor
-app = FastAPI(title="Monitoramento de Presenca - API Local")
+app = FastAPI(title="Monitoramento de Presenca - API")
 
 # Permite que o Frontend acesse este servidor
 app.add_middleware(
@@ -16,8 +16,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Caminho do banco de dados simples
-DB_FILE = "database.json"
+# Supabase config
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+
+def get_supabase() -> Client:
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Modelos de dados
 class Absence(BaseModel):
@@ -31,20 +35,6 @@ class UserProfile(BaseModel):
     display_name: str
     total_absences: int
 
-# Funcoes de manipulacao do arquivo JSON
-def load_db() -> Dict:
-    if not os.path.exists(DB_FILE):
-        return {"absences": [], "users": {}}
-    try:
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {"absences": [], "users": {}}
-
-def save_db(data: Dict):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4, ensure_ascii=False)
-
 # Rotas da API
 @app.get("/")
 def root():
@@ -52,57 +42,61 @@ def root():
 
 @app.get("/absences/{user_id}")
 def get_absences(user_id: str):
-    db = load_db()
-    return [a for a in db["absences"] if a["user_id"] == user_id]
+    supabase = get_supabase()
+    result = supabase.table("absences").select("*").eq("user_id", user_id).execute()
+    return result.data
 
 @app.post("/absences/")
 def save_absence(absence: Absence):
-    db = load_db()
-    if any(a["id"] == absence.id for a in db["absences"]):
+    supabase = get_supabase()
+    # Check if exists
+    existing = supabase.table("absences").select("id").eq("id", absence.id).execute()
+    if existing.data:
         return {"status": "exists"}
-    db["absences"].append(absence.model_dump())
-    save_db(db)
+    # Insert
+    supabase.table("absences").insert(absence.model_dump()).execute()
     return {"status": "saved"}
 
 @app.delete("/absences/{absence_id}")
 def delete_absence(absence_id: str):
-    db = load_db()
-    db["absences"] = [a for a in db["absences"] if a["id"] != absence_id]
-    save_db(db)
+    supabase = get_supabase()
+    supabase.table("absences").delete().eq("id", absence_id).execute()
     return {"status": "deleted"}
 
 @app.get("/ranking/")
 def get_ranking():
-    db = load_db()
-    users_list = list(db["users"].values())
-    # Ordena por MENOS faltas (quem falta menos fica em primeiro)
-    return sorted(users_list, key=lambda x: x.get("total_absences", 0))
+    supabase = get_supabase()
+    result = supabase.table("users").select("*").order("total_absences").execute()
+    return result.data
 
 @app.post("/profile/")
 def update_profile(profile: UserProfile):
-    db = load_db()
-    db["users"][profile.user_id] = profile.model_dump()
-    save_db(db)
+    supabase = get_supabase()
+    # Upsert (insert or update)
+    supabase.table("users").upsert(profile.model_dump()).execute()
     return {"status": "updated"}
 
 @app.get("/user/{username}")
 def get_user(username: str):
-    db = load_db()
-    if username in db["users"]:
-        return {"exists": True, "user": db["users"][username]}
+    supabase = get_supabase()
+    result = supabase.table("users").select("*").eq("user_id", username).execute()
+    if result.data:
+        return {"exists": True, "user": result.data[0]}
     return {"exists": False}
 
 @app.post("/register/{username}")
 def register_user(username: str):
-    db = load_db()
-    if username in db["users"]:
+    supabase = get_supabase()
+    # Check if exists
+    existing = supabase.table("users").select("user_id").eq("user_id", username).execute()
+    if existing.data:
         return {"status": "exists", "message": "Username ja existe"}
-    db["users"][username] = {
+    # Create user
+    supabase.table("users").insert({
         "user_id": username,
         "display_name": username,
         "total_absences": 0
-    }
-    save_db(db)
+    }).execute()
     return {"status": "created"}
 
 if __name__ == "__main__":
