@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Calendar as CalendarIcon, 
-  BarChart3, 
-  XCircle, 
+import {
+  Calendar as CalendarIcon,
+  BarChart3,
+  XCircle,
   Clock,
   LayoutDashboard,
   CheckCircle2,
@@ -11,7 +11,9 @@ import {
   Save,
   RefreshCw,
   Wifi,
-  WifiOff
+  WifiOff,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 // URL do servidor Python (usa variavel de ambiente em producao)
@@ -21,25 +23,23 @@ const TODAY = new Date();
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 const App = () => {
-  const [userId] = useState(() => {
-    let id = localStorage.getItem('app_user_id');
-    if (!id) {
-      id = 'user_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('app_user_id', id);
-    }
-    return id;
-  });
-
+  const [userId, setUserId] = useState(() => localStorage.getItem('app_user_id') || '');
   const [username, setUsername] = useState('');
   const [absentLogs, setAbsentLogs] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedDate, setSelectedDate] = useState(TODAY);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  const isLoggedIn = !!userId;
 
   const fetchData = async () => {
+    if (!userId) return;
+    setLoading(true);
     try {
       const resAbsences = await fetch(`${API_BASE_URL}/absences/${userId}`);
       if (resAbsences.ok) setAbsentLogs(await resAbsences.json());
@@ -50,7 +50,6 @@ const App = () => {
         setLeaderboard(data);
         const myProfile = data.find(u => u.user_id === userId);
         if (myProfile) setUsername(myProfile.display_name);
-        else setShowProfileModal(true);
       }
       setIsOnline(true);
     } catch (err) {
@@ -60,7 +59,50 @@ const App = () => {
     }
   };
 
-  useEffect(() => { fetchData(); }, [userId]);
+  const handleLogin = async (inputUsername) => {
+    if (!inputUsername.trim()) {
+      setLoginError('Digite um username');
+      return;
+    }
+    const cleanUsername = inputUsername.trim().toLowerCase().replace(/\s+/g, '_');
+    setLoginLoading(true);
+    setLoginError('');
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/user/${cleanUsername}`);
+      const data = await res.json();
+
+      if (data.exists) {
+        localStorage.setItem('app_user_id', cleanUsername);
+        setUserId(cleanUsername);
+        setUsername(data.user.display_name);
+      } else {
+        const registerRes = await fetch(`${API_BASE_URL}/register/${cleanUsername}`, { method: 'POST' });
+        const registerData = await registerRes.json();
+
+        if (registerData.status === 'created') {
+          localStorage.setItem('app_user_id', cleanUsername);
+          setUserId(cleanUsername);
+          setUsername(cleanUsername);
+        } else {
+          setLoginError('Erro ao criar conta');
+        }
+      }
+    } catch (err) {
+      setLoginError('Servidor offline. Tente novamente.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('app_user_id');
+    setUserId('');
+    setUsername('');
+    setAbsentLogs([]);
+  };
+
+  useEffect(() => { if (userId) fetchData(); }, [userId]);
 
   const calculatedStats = useMemo(() => {
     const stats = MOCK_SUBJECTS.map(subject => {
@@ -128,10 +170,43 @@ const App = () => {
     }
   };
 
+  if (!isLoggedIn) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6">
+      <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl">
+        <h1 className="text-3xl font-black italic text-blue-500 uppercase text-center mb-2">Monitoramento</h1>
+        <p className="text-slate-500 text-xs text-center mb-8">Entre com seu username único</p>
+
+        <input
+          type="text"
+          placeholder="Seu username..."
+          className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl mb-4 text-white outline-none focus:border-blue-500 font-bold"
+          id="login-input"
+          autoFocus
+          onKeyDown={(e) => e.key === 'Enter' && handleLogin(document.getElementById('login-input').value)}
+        />
+
+        {loginError && <p className="text-rose-500 text-xs mb-4 text-center">{loginError}</p>}
+
+        <button
+          onClick={() => handleLogin(document.getElementById('login-input').value)}
+          disabled={loginLoading}
+          className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-blue-500 transition-all disabled:opacity-50"
+        >
+          {loginLoading ? <RefreshCw size={18} className="animate-spin" /> : <LogIn size={18} />}
+          {loginLoading ? 'ENTRANDO...' : 'ENTRAR / REGISTRAR'}
+        </button>
+
+        <p className="text-slate-600 text-[10px] text-center mt-6">
+          Se o username não existir, uma nova conta será criada automaticamente.
+        </p>
+      </div>
+    </div>
+  );
+
   if (loading && isOnline) return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
       <RefreshCw className="w-10 h-10 text-blue-500 animate-spin mb-4" />
-      <p className="text-slate-400">Iniciando sistema local...</p>
+      <p className="text-slate-400">Carregando dados...</p>
     </div>
   );
 
@@ -145,9 +220,14 @@ const App = () => {
               {isOnline ? <><Wifi size={10} className="text-emerald-500 inline mr-1" /> Conectado</> : <><WifiOff size={10} className="text-rose-500 inline mr-1" /> Servidor Offline</>}
             </p>
           </div>
-          <button onClick={() => setShowProfileModal(true)} className="bg-slate-900 p-2 rounded-xl border border-slate-800">
-            <UserCircle className={username ? "text-blue-500" : "text-slate-600"} />
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowProfileModal(true)} className="bg-slate-900 p-2 rounded-xl border border-slate-800">
+              <UserCircle className={username ? "text-blue-500" : "text-slate-600"} />
+            </button>
+            <button onClick={handleLogout} className="bg-slate-900 p-2 rounded-xl border border-slate-800 hover:border-rose-500/50">
+              <LogOut size={24} className="text-slate-600 hover:text-rose-500" />
+            </button>
+          </div>
         </header>
 
         <main>

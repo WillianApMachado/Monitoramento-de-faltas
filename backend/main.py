@@ -85,6 +85,26 @@ def update_profile(profile: UserProfile):
     save_db(db)
     return {"status": "updated"}
 
+@app.get("/user/{username}")
+def get_user(username: str):
+    db = load_db()
+    if username in db["users"]:
+        return {"exists": True, "user": db["users"][username]}
+    return {"exists": False}
+
+@app.post("/register/{username}")
+def register_user(username: str):
+    db = load_db()
+    if username in db["users"]:
+        return {"status": "exists", "message": "Username ja existe"}
+    db["users"][username] = {
+        "user_id": username,
+        "display_name": username,
+        "total_absences": 0
+    }
+    save_db(db)
+    return {"status": "created"}
+
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*50)
